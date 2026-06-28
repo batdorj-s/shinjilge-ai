@@ -54,6 +54,42 @@ export const GLOBAL_CONCEPTS: ColumnConcept[] = [
             /gross_income/i, /income/i,
         ],
     },
+    {
+        concept: "spend",
+        patterns: [/spend/i],
+    },
+    {
+        concept: "impressions",
+        patterns: [/impressions/i, /reach/i],
+    },
+    {
+        concept: "clicks",
+        patterns: [/clicks/i],
+    },
+    {
+        concept: "ctr",
+        patterns: [/ctr/i],
+    },
+    {
+        concept: "cpc",
+        patterns: [/cpc/i],
+    },
+    {
+        concept: "cpm",
+        patterns: [/cpm/i],
+    },
+    {
+        concept: "frequency",
+        patterns: [/frequency/i],
+    },
+    {
+        concept: "conversions",
+        patterns: [/conversions/i, /cost_per_conversion/i],
+    },
+    {
+        concept: "roas",
+        patterns: [/purchase_roas/i, /roas/i],
+    },
 ];
 
 const TABLE_SPECIFIC_COLUMNS: Record<string, Record<string, string[]>> = {

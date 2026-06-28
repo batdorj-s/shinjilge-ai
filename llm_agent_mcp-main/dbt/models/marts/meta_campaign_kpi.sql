@@ -9,7 +9,7 @@
 with performance as (
     select * from {{ ref('int_meta_ad_performance') }}
     {% if is_incremental() %}
-        where date_start > (select max(last_impression_date) from {{ this }})
+        where date_stop > (select max(last_impression_date) from {{ this }})
     {% endif %}
 )
 
@@ -28,6 +28,12 @@ select
     sum(reach) as total_reach,
     round(avg(frequency), 2) as avg_frequency,
     count(distinct ad_id) as unique_ads,
+    sum(conversions) as total_conversions,
+    sum(leads) as total_leads,
+    sum(add_to_cart) as total_add_to_cart,
+    case when sum(conversions) > 0 then round(sum(spend) / nullif(sum(conversions), 0), 2) else 0 end as avg_cost_per_conversion,
+    sum(conversion_value) as total_conversion_value,
+    case when sum(spend) > 0 then round(sum(conversion_value) / nullif(sum(spend), 0), 2) else 0 end as avg_roas,
     owner_id
 from performance
 group by campaign_id, campaign_name, objective, owner_id

@@ -43,6 +43,8 @@ select
     i.frequency,
     i.actions,
     i.cost_per_action_type,
+    i.action_values,
+    i.purchase_roas,
     coalesce(c.status, 'UNKNOWN') as campaign_status,
     c.objective,
     coalesce(a.status, 'UNKNOWN') as ad_status,

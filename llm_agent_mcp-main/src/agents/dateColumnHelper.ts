@@ -78,7 +78,7 @@ export function detectDateColumn(
                 return null;
             }
         }
-        if (/\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice/i.test(columnName)) {
+        if (/\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice|^date_|^time_|_(?:start|stop)$/i.test(columnName)) {
             return {
                 sqlCast: `CAST("${columnName}" AS DATE)`,
                 detectedAs: "text-iso",
@@ -87,7 +87,7 @@ export function detectDateColumn(
         return null;
     }
 
-    if (/\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice/i.test(columnName)) {
+    if (/\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice|^date_|^time_|_(?:start|stop)$/i.test(columnName)) {
         return {
             sqlCast: `CAST("${columnName}" AS DATE)`,
             detectedAs: "name-heuristic",

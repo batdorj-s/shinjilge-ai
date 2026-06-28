@@ -175,6 +175,11 @@ export async function fetchAds(
   return result.data || [];
 }
 
+export interface AdInsightAction {
+  action_type: string;
+  value: string;
+}
+
 export interface AdInsight {
   campaign_id: string;
   campaign_name: string;
@@ -192,8 +197,10 @@ export interface AdInsight {
   cpm: string;
   reach: string;
   frequency: string;
-  actions?: Array<{ action_type: string; value: string }>;
-  cost_per_action_type?: Array<{ action_type: string; value: string }>;
+  actions?: AdInsightAction[];
+  cost_per_action_type?: AdInsightAction[];
+  action_values?: AdInsightAction[];
+  purchase_roas?: AdInsightAction[];
 }
 
 export async function fetchAdInsights(
@@ -223,6 +230,8 @@ export async function fetchAdInsights(
       "frequency",
       "actions",
       "cost_per_action_type",
+      "action_values",
+      "purchase_roas",
     ].join(","),
     time_increment: "1",
     limit: "500",

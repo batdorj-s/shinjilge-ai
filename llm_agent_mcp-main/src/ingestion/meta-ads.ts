@@ -160,18 +160,21 @@ export async function syncAdsData(
         frequency NUMERIC,
         actions JSONB,
         cost_per_action_type JSONB,
+        action_values JSONB,
+        purchase_roas JSONB,
         fetched_at TIMESTAMPTZ DEFAULT NOW(),
         owner_id TEXT
       )
     `);
     for (const ins of insights) {
       await pool.query(
-        `INSERT INTO "${BRONZE_TABLE_INSIGHTS}" (campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, date_start, date_stop, impressions, clicks, spend, ctr, cpc, cpm, reach, frequency, actions, cost_per_action_type, owner_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8::date, $9::bigint, $10::bigint, $11::numeric, $12::numeric, $13::numeric, $14::numeric, $15::bigint, $16::numeric, $17::jsonb, $18::jsonb, $19)`,
+        `INSERT INTO "${BRONZE_TABLE_INSIGHTS}" (campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, date_start, date_stop, impressions, clicks, spend, ctr, cpc, cpm, reach, frequency, actions, cost_per_action_type, action_values, purchase_roas, owner_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8::date, $9::bigint, $10::bigint, $11::numeric, $12::numeric, $13::numeric, $14::numeric, $15::bigint, $16::numeric, $17::jsonb, $18::jsonb, $19::jsonb, $20::jsonb, $21)`,
         [ins.campaign_id, ins.campaign_name, ins.adset_id, ins.adset_name, ins.ad_id, ins.ad_name, ins.date_start, ins.date_stop,
          ins.impressions || "0", ins.clicks || "0", ins.spend || "0", ins.ctr || "0", ins.cpc || "0", ins.cpm || "0",
          ins.reach || "0", ins.frequency || "0",
          JSON.stringify(ins.actions || []), JSON.stringify(ins.cost_per_action_type || []),
+         JSON.stringify(ins.action_values || []), JSON.stringify(ins.purchase_roas || []),
          ownerId],
       );
     }
@@ -210,7 +213,15 @@ export async function buildSilverLayer(ownerId: string): Promise<void> {
       COALESCE(c.status, 'UNKNOWN') AS campaign_status,
       COALESCE(a.status, 'UNKNOWN') AS ad_status,
       c.objective,
-      i.owner_id
+      i.owner_id,
+      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.actions) AS elem WHERE elem->>'action_type' = 'purchase' LIMIT 1), 0) AS conversions,
+      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.actions) AS elem WHERE elem->>'action_type' = 'lead' LIMIT 1), 0) AS leads,
+      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.actions) AS elem WHERE elem->>'action_type' = 'add_to_cart' LIMIT 1), 0) AS add_to_cart,
+      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.actions) AS elem WHERE elem->>'action_type' = 'view_content' LIMIT 1), 0) AS view_content,
+      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.cost_per_action_type) AS elem WHERE elem->>'action_type' = 'purchase' LIMIT 1), 0) AS cost_per_conversion,
+      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.cost_per_action_type) AS elem WHERE elem->>'action_type' = 'lead' LIMIT 1), 0) AS cost_per_lead,
+      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.purchase_roas) AS elem WHERE elem->>'action_type' = 'purchase' LIMIT 1), 0) AS purchase_roas,
+      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.action_values) AS elem WHERE elem->>'action_type' = 'purchase' LIMIT 1), 0) AS conversion_value
     FROM "${BRONZE_TABLE_INSIGHTS}" i
     LEFT JOIN "${BRONZE_TABLE_CAMPAIGNS}" c ON i.campaign_id = c.id
     LEFT JOIN "${BRONZE_TABLE_ADS}" a ON i.ad_id = a.id
@@ -242,8 +253,13 @@ export async function buildGoldLayer(ownerId: string): Promise<void> {
       SUM(reach) AS total_reach,
       ROUND(AVG(frequency), 2) AS avg_frequency,
       COUNT(DISTINCT ad_id) AS unique_ads,
+      SUM(conversions) AS total_conversions,
+      SUM(leads) AS total_leads,
+      CASE WHEN SUM(conversions) > 0 THEN ROUND(SUM(spend) / NULLIF(SUM(conversions), 0), 2) ELSE 0 END AS avg_cost_per_conversion,
+      SUM(conversion_value) AS total_conversion_value,
+      CASE WHEN SUM(spend) > 0 THEN ROUND(SUM(conversion_value) / NULLIF(SUM(spend), 0), 2) ELSE 0 END AS avg_roas,
       owner_id
-    FROM "${BRONZE_TABLE_INSIGHTS}"
+    FROM "${SILVER_TABLE_AD_PERFORMANCE}"
     WHERE owner_id = $1
     GROUP BY campaign_id, campaign_name, objective, owner_id
   `, [ownerId]);
@@ -299,7 +315,7 @@ export async function registerMetaTablesInCatalog(ownerId: string): Promise<void
   await registerTableInCatalog(
     GOLD_TABLE_CAMPAIGN_KPI,
     ownerId,
-    "Meta Ads Gold: Campaign-level aggregated KPIs (impressions, clicks, spend, CTR, CPC, CPM, reach, frequency). One row per campaign.",
+    "Meta Ads Gold: Campaign-level aggregated KPIs (impressions, clicks, spend, CTR, CPC, CPM, reach, frequency, conversions, leads, ROAS, conversion value). One row per campaign.",
   );
   await registerTableInCatalog(
     BRONZE_TABLE_INSIGHTS,
