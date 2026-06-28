@@ -1,4 +1,4 @@
-import { getPool, initDataLake, isPgAvailable, getColumnSamples, getColumnProfile } from "../db/data-lake.js";
+import { getPool, initDataLake, getColumnProfile } from "../db/data-lake.js";
 import { getConnection } from "../db/meta-repository.js";
 import { fetchAdAccountId, fetchCampaigns, fetchAdSets, fetchAds, fetchAdInsights, MetaApiError } from "./meta-api.js";
 
@@ -6,8 +6,10 @@ const BRONZE_TABLE_CAMPAIGNS = "meta_bronze_campaigns";
 const BRONZE_TABLE_ADSETS = "meta_bronze_adsets";
 const BRONZE_TABLE_ADS = "meta_bronze_ads";
 const BRONZE_TABLE_INSIGHTS = "meta_bronze_insights";
-const SILVER_TABLE_AD_PERFORMANCE = "meta_silver_ad_performance";
-const GOLD_TABLE_CAMPAIGN_KPI = "meta_gold_campaign_kpi";
+// Silver/Gold table constants removed — transforms are owned by dbt models:
+//   int_meta_ad_performance (silver, ephemeral)
+//   meta_campaign_kpi     (gold, table)
+//   meta_adset_kpi        (gold, table)
 
 function ensureDateStr(date: Date = new Date()): string {
   return date.toISOString().split("T")[0];
@@ -185,88 +187,6 @@ export async function syncAdsData(
   return stats;
 }
 
-export async function buildSilverLayer(ownerId: string): Promise<void> {
-  const pool = getPool();
-  if (!isPgAvailable()) return;
-
-  await pool.query(`DROP TABLE IF EXISTS "${SILVER_TABLE_AD_PERFORMANCE}" CASCADE`);
-  await pool.query(`
-    CREATE TABLE "${SILVER_TABLE_AD_PERFORMANCE}" AS
-    SELECT
-      i.id AS insight_id,
-      i.campaign_id,
-      i.campaign_name,
-      i.adset_id,
-      i.adset_name,
-      i.ad_id,
-      i.ad_name,
-      i.date_start,
-      i.date_stop,
-      i.impressions,
-      i.clicks,
-      i.spend,
-      i.ctr,
-      i.cpc,
-      i.cpm,
-      i.reach,
-      i.frequency,
-      COALESCE(c.status, 'UNKNOWN') AS campaign_status,
-      COALESCE(a.status, 'UNKNOWN') AS ad_status,
-      c.objective,
-      i.owner_id,
-      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.actions) AS elem WHERE elem->>'action_type' = 'purchase' LIMIT 1), 0) AS conversions,
-      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.actions) AS elem WHERE elem->>'action_type' = 'lead' LIMIT 1), 0) AS leads,
-      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.actions) AS elem WHERE elem->>'action_type' = 'add_to_cart' LIMIT 1), 0) AS add_to_cart,
-      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.actions) AS elem WHERE elem->>'action_type' = 'view_content' LIMIT 1), 0) AS view_content,
-      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.cost_per_action_type) AS elem WHERE elem->>'action_type' = 'purchase' LIMIT 1), 0) AS cost_per_conversion,
-      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.cost_per_action_type) AS elem WHERE elem->>'action_type' = 'lead' LIMIT 1), 0) AS cost_per_lead,
-      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.purchase_roas) AS elem WHERE elem->>'action_type' = 'purchase' LIMIT 1), 0) AS purchase_roas,
-      COALESCE((SELECT (elem->>'value')::numeric FROM jsonb_array_elements(i.action_values) AS elem WHERE elem->>'action_type' = 'purchase' LIMIT 1), 0) AS conversion_value
-    FROM "${BRONZE_TABLE_INSIGHTS}" i
-    LEFT JOIN "${BRONZE_TABLE_CAMPAIGNS}" c ON i.campaign_id = c.id
-    LEFT JOIN "${BRONZE_TABLE_ADS}" a ON i.ad_id = a.id
-    WHERE i.owner_id = $1
-  `, [ownerId]);
-
-  console.log(`[Meta Ads] Silver layer built: ${SILVER_TABLE_AD_PERFORMANCE}`);
-}
-
-export async function buildGoldLayer(ownerId: string): Promise<void> {
-  const pool = getPool();
-  if (!isPgAvailable()) return;
-
-  await pool.query(`DROP TABLE IF EXISTS "${GOLD_TABLE_CAMPAIGN_KPI}" CASCADE`);
-  await pool.query(`
-    CREATE TABLE "${GOLD_TABLE_CAMPAIGN_KPI}" AS
-    SELECT
-      campaign_id,
-      campaign_name,
-      objective,
-      MIN(date_start) AS first_impression_date,
-      MAX(date_stop) AS last_impression_date,
-      SUM(impressions) AS total_impressions,
-      SUM(clicks) AS total_clicks,
-      SUM(spend) AS total_spend,
-      CASE WHEN SUM(clicks) > 0 THEN ROUND(SUM(clicks)::numeric / NULLIF(SUM(impressions), 0) * 100, 2) ELSE 0 END AS avg_ctr,
-      CASE WHEN SUM(clicks) > 0 THEN ROUND(SUM(spend) / NULLIF(SUM(clicks), 0), 2) ELSE 0 END AS avg_cpc,
-      CASE WHEN SUM(impressions) > 0 THEN ROUND(SUM(spend) / NULLIF(SUM(impressions), 0) * 1000, 2) ELSE 0 END AS avg_cpm,
-      SUM(reach) AS total_reach,
-      ROUND(AVG(frequency), 2) AS avg_frequency,
-      COUNT(DISTINCT ad_id) AS unique_ads,
-      SUM(conversions) AS total_conversions,
-      SUM(leads) AS total_leads,
-      CASE WHEN SUM(conversions) > 0 THEN ROUND(SUM(spend) / NULLIF(SUM(conversions), 0), 2) ELSE 0 END AS avg_cost_per_conversion,
-      SUM(conversion_value) AS total_conversion_value,
-      CASE WHEN SUM(spend) > 0 THEN ROUND(SUM(conversion_value) / NULLIF(SUM(spend), 0), 2) ELSE 0 END AS avg_roas,
-      owner_id
-    FROM "${SILVER_TABLE_AD_PERFORMANCE}"
-    WHERE owner_id = $1
-    GROUP BY campaign_id, campaign_name, objective, owner_id
-  `, [ownerId]);
-
-  console.log(`[Meta Ads] Gold layer built: ${GOLD_TABLE_CAMPAIGN_KPI}`);
-}
-
 async function registerTableInCatalog(
   tableName: string,
   ownerId: string,
@@ -308,18 +228,8 @@ async function registerTableInCatalog(
 
 export async function registerMetaTablesInCatalog(ownerId: string): Promise<void> {
   await registerTableInCatalog(
-    SILVER_TABLE_AD_PERFORMANCE,
-    ownerId,
-    "Meta Ads Silver: Ad-level performance with campaign/ad status enrichment. One row per ad per day.",
-  );
-  await registerTableInCatalog(
-    GOLD_TABLE_CAMPAIGN_KPI,
-    ownerId,
-    "Meta Ads Gold: Campaign-level aggregated KPIs (impressions, clicks, spend, CTR, CPC, CPM, reach, frequency, conversions, leads, ROAS, conversion value). One row per campaign.",
-  );
-  await registerTableInCatalog(
     BRONZE_TABLE_INSIGHTS,
     ownerId,
-    "Meta Ads Bronze: Raw daily ad insights from Meta Graph API. One row per ad per day.",
+    "Meta Ads Bronze: Raw daily ad insights from Meta Graph API. One row per ad per day. Transforms (Silver/Gold) handled by dbt models: int_meta_ad_performance, meta_campaign_kpi, meta_adset_kpi.",
   );
 }

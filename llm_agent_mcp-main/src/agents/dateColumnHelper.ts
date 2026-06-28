@@ -3,6 +3,18 @@ export interface DateColumnInfo {
     detectedAs: "native" | "text-iso" | "text-us" | "text-eu" | "int-serial" | "int-year" | "name-heuristic";
 }
 
+const DATE_COLUMN_PATTERN = /\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice|^(?:date|time)_|_(?:start|stop)$/i;
+
+const KNOWN_NON_DATE_COLUMNS = [
+    /^time_zone$/i,
+    /_timezone$/i,
+];
+
+export function matchesDateNameHeuristic(columnName: string): boolean {
+    return !KNOWN_NON_DATE_COLUMNS.some((p) => p.test(columnName))
+        && DATE_COLUMN_PATTERN.test(columnName);
+}
+
 export function detectDateColumn(
     columnName: string,
     columnType: string,
@@ -78,7 +90,7 @@ export function detectDateColumn(
                 return null;
             }
         }
-        if (/\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice|^date_|^time_|_(?:start|stop)$/i.test(columnName)) {
+        if (matchesDateNameHeuristic(columnName)) {
             return {
                 sqlCast: `CAST("${columnName}" AS DATE)`,
                 detectedAs: "text-iso",
@@ -87,7 +99,7 @@ export function detectDateColumn(
         return null;
     }
 
-    if (/\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice|^date_|^time_|_(?:start|stop)$/i.test(columnName)) {
+    if (matchesDateNameHeuristic(columnName)) {
         return {
             sqlCast: `CAST("${columnName}" AS DATE)`,
             detectedAs: "name-heuristic",

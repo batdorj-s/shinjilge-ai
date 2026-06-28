@@ -3,6 +3,7 @@ import {
     detectDateColumn,
     extractProfileFromSchemaDef,
     findDateColumnWithCast,
+    matchesDateNameHeuristic,
 } from "../agents/dateColumnHelper.js";
 
 function simulateOldFindDateColumn(columns: string[], columnTypes?: Record<string, string>): string | null {
@@ -284,6 +285,71 @@ describe("detectDateColumn — synthetic column tests", () => {
     it("Name heuristic: 'birthday' should NOT match (false-positive prevention)", () => {
         const result = detectDateColumn("birthday", "unknown");
         expect(result).toBeNull();
+    });
+
+    it("Name heuristic: 'date_start' should match (prefix pattern ^date_)", () => {
+        const result = detectDateColumn("date_start", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'date_stop' should match (suffix pattern _stop)", () => {
+        const result = detectDateColumn("date_stop", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'time_zone' should NOT match (explicit exclusion list)", () => {
+        const result = detectDateColumn("time_zone", "unknown");
+        expect(result).toBeNull();
+    });
+
+    it("Name heuristic: 'time_period' should match (^time_ prefix, not in exclusion)", () => {
+        const result = detectDateColumn("time_period", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'workflow_stop' should match (_stop suffix — risk accepted for analytics context)", () => {
+        const result = detectDateColumn("workflow_stop", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+
+    it("Name heuristic: 'process_start' should match (_start suffix — risk accepted for analytics context)", () => {
+        const result = detectDateColumn("process_start", "unknown");
+        expect(result).not.toBeNull();
+        expect(result!.detectedAs).toBe("name-heuristic");
+    });
+});
+
+describe("matchesDateNameHeuristic — unit tests for exclusion logic", () => {
+    it("date_start returns true", () => {
+        expect(matchesDateNameHeuristic("date_start")).toBe(true);
+    });
+
+    it("date_stop returns true", () => {
+        expect(matchesDateNameHeuristic("date_stop")).toBe(true);
+    });
+
+    it("time_zone returns false (explicit exclusion)", () => {
+        expect(matchesDateNameHeuristic("time_zone")).toBe(false);
+    });
+
+    it("timezone (no underscore) returns false (exclusion pattern)", () => {
+        expect(matchesDateNameHeuristic("timezone")).toBe(false);
+    });
+
+    it("start_time returns true (_time suffix)", () => {
+        expect(matchesDateNameHeuristic("start_time")).toBe(true);
+    });
+
+    it("time_period returns true (^time_ prefix)", () => {
+        expect(matchesDateNameHeuristic("time_period")).toBe(true);
+    });
+
+    it("birthday returns false (contains 'day' but not 'date')", () => {
+        expect(matchesDateNameHeuristic("birthday")).toBe(false);
     });
 });
 

@@ -16,7 +16,7 @@ import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./m
 import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, detectForeignKeys, authenticateUser, createUser } from "./db/data-lake.js";
 import { metaOAuthRouter } from "./auth/meta-oauth.js";
-import { syncAdsData, buildSilverLayer, buildGoldLayer, registerMetaTablesInCatalog } from "./ingestion/meta-ads.js";
+import { syncAdsData, registerMetaTablesInCatalog } from "./ingestion/meta-ads.js";
 import { syncPageData } from "./ingestion/meta-page.js";
 import { syncInstagramData } from "./ingestion/meta-instagram.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
@@ -1002,8 +1002,6 @@ app.post("/api/meta/sync", async (req, res) => {
   try {
     if (activePlatforms.includes("ads")) {
       const stats = await syncAdsData(auth.payload.userId, sinceDays || 90);
-      await buildSilverLayer(auth.payload.userId);
-      await buildGoldLayer(auth.payload.userId);
       await registerMetaTablesInCatalog(auth.payload.userId);
       results.ads = stats;
     }

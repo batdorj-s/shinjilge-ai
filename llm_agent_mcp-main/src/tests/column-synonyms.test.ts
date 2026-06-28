@@ -192,3 +192,108 @@ describe("buildDeterministicTechSql — column synonym mapping", () => {
         expect(productCol).toBe("sales_category");
     });
 });
+
+describe("GLOBAL_CONCEPTS — Meta Ads marketing metrics", () => {
+    const META_COLS = [
+        "campaign_id", "campaign_name", "adset_id", "adset_name", "ad_id", "ad_name",
+        "date_start", "date_stop",
+        "impressions", "reach", "frequency", "clicks",
+        "ctr", "cpc", "cpm",
+        "spend",
+        "conversions", "cost_per_conversion",
+        "purchase_roas",
+    ];
+
+    it("findConceptColumn 'impressions' → 'impressions' (prefers exact match)", () => {
+        const cols = ["id", "impressions", "clicks", "spend"];
+        expect(findConceptColumn(cols, "impressions")).toBe("impressions");
+    });
+
+    it("findConceptColumn 'impressions' → 'reach' when no 'impressions' column", () => {
+        const cols = ["id", "reach", "clicks", "spend"];
+        expect(findConceptColumn(cols, "impressions")).toBe("reach");
+    });
+
+    it("findConceptColumn 'spend' → 'spend'", () => {
+        const cols = ["id", "spend", "clicks"];
+        expect(findConceptColumn(cols, "spend")).toBe("spend");
+    });
+
+    it("findConceptColumn 'ctr' → 'ctr'", () => {
+        expect(findConceptColumn(META_COLS, "ctr")).toBe("ctr");
+    });
+
+    it("findConceptColumn 'cpc' → 'cpc'", () => {
+        expect(findConceptColumn(META_COLS, "cpc")).toBe("cpc");
+    });
+
+    it("findConceptColumn 'cpm' → 'cpm'", () => {
+        expect(findConceptColumn(META_COLS, "cpm")).toBe("cpm");
+    });
+
+    it("findConceptColumn 'conversions' → 'conversions'", () => {
+        expect(findConceptColumn(META_COLS, "conversions")).toBe("conversions");
+    });
+
+    it("findConceptColumn 'roas' → 'purchase_roas'", () => {
+        expect(findConceptColumn(META_COLS, "roas")).toBe("purchase_roas");
+    });
+
+    it("findConceptColumn 'clicks' → 'clicks'", () => {
+        expect(findConceptColumn(META_COLS, "clicks")).toBe("clicks");
+    });
+
+    it("findConceptColumn 'frequency' → 'frequency'", () => {
+        expect(findConceptColumn(META_COLS, "frequency")).toBe("frequency");
+    });
+
+    it("findConceptColumn 'date' → 'date_start' (date concept, first pattern /date/i matches)", () => {
+        expect(findConceptColumn(META_COLS, "date")).toBe("date_start");
+    });
+
+    it("NO COLLISION: 'cost_per_conversion' matches 'conversions' but NOT sales/spend/income", () => {
+        // cost_per_conversion contains "conversion" not "sales"/"spend"/"income"
+        const conversionsCol = findConceptColumn(META_COLS, "conversions");
+        expect(conversionsCol).toBe("conversions");
+
+        const spendCol = findConceptColumn(META_COLS, "spend");
+        expect(spendCol).toBe("spend");
+        expect(spendCol).not.toBe(conversionsCol);
+    });
+
+    it("NO COLLISION: 'purchase_roas' matches 'roas' but NOT sales", () => {
+        // purchase_roas contains "purchase" not "sales"
+        const roasCol = findConceptColumn(META_COLS, "roas");
+        expect(roasCol).toBe("purchase_roas");
+
+        const salesCol = findConceptColumn(META_COLS, "sales");
+        expect(salesCol).not.toBe(roasCol);
+    });
+
+    it("NO COLLISION: 'spend' isolated — no overlap with other concepts", () => {
+        // spend only matches /spend/i, not /sales/i, /income/i, etc.
+        const cols = ["id", "spend", "income", "sales"];
+        expect(findConceptColumn(cols, "spend")).toBe("spend");
+        expect(findConceptColumn(cols, "sales")).toBe("sales");
+        expect(findConceptColumn(cols, "income")).toBe("income");
+
+        // All three should be different columns
+        const spendCol = findConceptColumn(cols, "spend");
+        const salesCol = findConceptColumn(cols, "sales");
+        const incomeCol = findConceptColumn(cols, "income");
+        expect(spendCol).not.toBe(salesCol);
+        expect(spendCol).not.toBe(incomeCol);
+    });
+
+    it("complete Meta Ads table: all marketing concepts find a column", () => {
+        // Only marketing-specific concepts — Meta Ads has no sales/product/quantity/income columns
+        const concepts = ["spend", "impressions", "clicks", "ctr", "cpc", "cpm",
+            "frequency", "conversions", "roas"];
+        for (const concept of concepts) {
+            const col = findConceptColumn(META_COLS, concept);
+            expect(col, `concept "${concept}" should find a column`).not.toBeNull();
+        }
+        // date concept also works via /date/i pattern on date_start
+        expect(findConceptColumn(META_COLS, "date")).toBe("date_start");
+    });
+});
