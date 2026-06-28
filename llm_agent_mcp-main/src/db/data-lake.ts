@@ -642,15 +642,29 @@ function cleanNumeric(val: string): string {
 function inferColumnType(values: string[]): string {
     let hasDecimal = false;
     let allNumeric = true;
+    const INT32_MAX = 2147483647;
+    const INT64_MAX = 9223372036854775807;
+    let maxInt = 0;
+    let overflow64 = false;
     for (const raw of values) {
         const cleaned = cleanNumeric(raw);
         if (!cleaned) { allNumeric = false; continue; }
         if (/^-?\d*\.\d+$/.test(cleaned) || /^-?\d+\.\d*$/.test(cleaned)) hasDecimal = true;
         else if (!/^-?\d+$/.test(cleaned)) allNumeric = false;
+        const absStr = cleaned.replace(/^-/, "");
+        if (absStr.length > 19 || (absStr.length === 19 && absStr > "9223372036854775807")) {
+            overflow64 = true;
+        } else {
+            const val = parseInt(absStr, 10);
+            if (val > maxInt) maxInt = val;
+        }
     }
     if (!allNumeric) return "TEXT";
     if (hasDecimal) return "NUMERIC";
-    return "INTEGER";
+    if (overflow64) return "NUMERIC";
+    if (maxInt <= INT32_MAX) return "INTEGER";
+    if (maxInt <= INT64_MAX) return "BIGINT";
+    return "NUMERIC";
 }
 
 export async function seedCsv(
