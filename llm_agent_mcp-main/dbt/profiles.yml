@@ -1,0 +1,12 @@
+datalake_transformations:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      threads: 1
+      host: 127.0.0.1
+      port: 5432
+      user: postgres
+      password: bataa200699133770
+      dbname: postgres
+      schema: public
