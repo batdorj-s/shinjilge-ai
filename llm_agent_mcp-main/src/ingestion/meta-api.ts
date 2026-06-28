@@ -36,8 +36,10 @@ export async function graphRequest<T = any>(
   }
 
   for (let attempt = 0; attempt < retries; attempt++) {
+    // Pre-call rate limit gate — check BEFORE sending request to Meta API
     const limit = apiLimiter.check(`meta_api_${path}`);
     if (!limit.allowed) {
+      console.warn(`[Meta API] Pre-call rate limit hit for ${path}, waiting ${limit.resetInMs}ms`);
       await sleep(limit.resetInMs);
     }
 

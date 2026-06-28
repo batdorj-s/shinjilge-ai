@@ -1,5 +1,5 @@
 import { getPool, isPgAvailable, initDataLake } from "./data-lake.js";
-import { encrypt, decrypt } from "../utils/encryption.js";
+import { encrypt, decryptWithKeyRotation } from "../utils/encryption.js";
 
 export interface MetaConnection {
   id: string;
@@ -29,12 +29,16 @@ export interface MetaConnectionRow {
   updated_at: string;
 }
 
-function rowToConnection(row: MetaConnectionRow): MetaConnection {
+async function rowToConnection(row: MetaConnectionRow): Promise<MetaConnection> {
+  const { plaintext: accessToken, needsReEncrypt } = decryptWithKeyRotation(row.encrypted_token);
+  if (needsReEncrypt) {
+    await reEncryptToken(row.id, accessToken);
+  }
   return {
     id: row.id,
     owner_id: row.owner_id,
     platform: row.platform as MetaConnection["platform"],
-    access_token: decrypt(row.encrypted_token),
+    access_token: accessToken,
     token_expires_at: row.token_expires_at,
     scopes: JSON.parse(row.scopes),
     meta_user_id: row.meta_user_id ?? undefined,
@@ -43,6 +47,16 @@ function rowToConnection(row: MetaConnectionRow): MetaConnection {
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+async function reEncryptToken(connectionId: string, plaintextToken: string): Promise<void> {
+  const pool = getPool();
+  const newEncrypted = encrypt(plaintextToken);
+  await pool.query(
+    `UPDATE meta_connections SET encrypted_token = $1, updated_at = NOW() WHERE id = $2`,
+    [newEncrypted, connectionId],
+  );
+  console.log(`[Meta Repository] Re-encrypted connection ${connectionId} with current key`);
 }
 
 export async function saveConnection(
@@ -90,7 +104,7 @@ export async function getConnection(ownerId: string, platform: MetaConnection["p
   );
 
   if (result.rows.length === 0) return null;
-  return rowToConnection(result.rows[0] as MetaConnectionRow);
+  return await rowToConnection(result.rows[0] as MetaConnectionRow);
 }
 
 export async function getAllConnections(ownerId: string): Promise<MetaConnection[]> {
@@ -103,7 +117,8 @@ export async function getAllConnections(ownerId: string): Promise<MetaConnection
     [ownerId],
   );
 
-  return (result.rows as MetaConnectionRow[]).map(rowToConnection);
+  const rows = result.rows as MetaConnectionRow[];
+  return Promise.all(rows.map(r => rowToConnection(r)));
 }
 
 export async function deleteConnection(ownerId: string, platform: MetaConnection["platform"]): Promise<void> {
@@ -133,16 +148,16 @@ export async function refreshToken(
   );
 }
 
-export async function getConnectionByPageId(pageId: string): Promise<MetaConnection | null> {
+export async function getConnectionByPageId(ownerId: string, pageId: string): Promise<MetaConnection | null> {
   await initDataLake();
   if (!isPgAvailable()) return null;
   const pool = getPool();
 
   const result = await pool.query(
-    `SELECT * FROM meta_connections WHERE page_id = $1 ORDER BY updated_at DESC LIMIT 1`,
-    [pageId],
+    `SELECT * FROM meta_connections WHERE owner_id = $1 AND page_id = $2 ORDER BY updated_at DESC LIMIT 1`,
+    [ownerId, pageId],
   );
 
   if (result.rows.length === 0) return null;
-  return rowToConnection(result.rows[0] as MetaConnectionRow);
+  return await rowToConnection(result.rows[0] as MetaConnectionRow);
 }

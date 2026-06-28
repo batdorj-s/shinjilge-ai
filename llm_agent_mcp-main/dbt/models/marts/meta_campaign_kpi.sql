@@ -1,5 +1,16 @@
+{{
+  config(
+    materialized='incremental',
+    unique_key='campaign_id',
+    on_schema_change='append_new_columns',
+  )
+}}
+
 with performance as (
     select * from {{ ref('int_meta_ad_performance') }}
+    {% if is_incremental() %}
+        where date_start > (select max(last_impression_date) from {{ this }})
+    {% endif %}
 )
 
 select

@@ -1,6 +1,33 @@
 import { Router, type Request, type Response } from "express";
+import crypto from "crypto";
 import { verifyBearerHeader } from "../auth.js";
 import { saveConnection, type MetaConnection } from "../db/meta-repository.js";
+
+// In-memory nonce store for OAuth CSRF protection
+// Key: nonce, Value: { userId, role, expiresAt }
+const oauthNonces = new Map<string, { userId: string; role: string; expiresAt: number }>();
+
+function generateNonce(userId: string, role: string): string {
+  const nonce = crypto.randomBytes(32).toString("hex");
+  oauthNonces.set(nonce, { userId, role, expiresAt: Date.now() + 600_000 }); // 10 min expiry
+  return nonce;
+}
+
+function consumeNonce(nonce: string): { userId: string; role: string } | null {
+  const entry = oauthNonces.get(nonce);
+  if (!entry) return null;
+  oauthNonces.delete(nonce);
+  if (Date.now() > entry.expiresAt) return null;
+  return { userId: entry.userId, role: entry.role };
+}
+
+// Periodic cleanup of expired nonces (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of oauthNonces) {
+    if (now > val.expiresAt) oauthNonces.delete(key);
+  }
+}, 300_000);
 
 const router = Router();
 
@@ -29,7 +56,9 @@ router.get("/api/meta/auth", (req: Request, res: Response) => {
     return res.status(500).json({ error: "META_APP_ID not configured" });
   }
 
-  const state = Buffer.from(JSON.stringify({ userId: auth.payload.userId, role: auth.payload.role })).toString("base64url");
+  // Generate CSRF nonce — server-validated, single-use, 10min expiry
+  const nonce = generateNonce(auth.payload.userId, auth.payload.role);
+  const state = Buffer.from(JSON.stringify({ nonce })).toString("base64url");
 
   const authUrl = new URL("https://www.facebook.com/v22.0/dialog/oauth");
   authUrl.searchParams.set("client_id", META_APP_ID);
@@ -59,7 +88,11 @@ router.get("/api/meta/callback", async (req: Request, res: Response) => {
   let userId: string;
   try {
     const statePayload = JSON.parse(Buffer.from(state, "base64url").toString());
-    userId = statePayload.userId;
+    const nonceData = consumeNonce(statePayload.nonce);
+    if (!nonceData) {
+      return res.redirect(`${process.env.CORS_ORIGIN || "http://localhost:3000"}/settings?meta=error&reason=invalid_or_expired_state`);
+    }
+    userId = nonceData.userId;
   } catch {
     return res.redirect(`${process.env.CORS_ORIGIN || "http://localhost:3000"}/settings?meta=error&reason=invalid_state`);
   }

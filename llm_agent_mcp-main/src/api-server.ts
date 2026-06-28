@@ -1054,6 +1054,8 @@ async function start() {
   await setupKnowledgeBase();
 
   requireJwtSecret();
+  const { requireEncryptionKey } = await import("./utils/encryption.js");
+  requireEncryptionKey();
 
   app.listen(PORT, () => {
     console.log(`\nAPI Server running at http://localhost:${PORT}`);
