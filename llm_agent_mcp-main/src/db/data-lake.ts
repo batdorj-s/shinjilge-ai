@@ -639,7 +639,8 @@ function cleanNumeric(val: string): string {
     return val.replace(/[$,]/g, "").trim();
 }
 
-function inferColumnType(values: string[]): string {
+/** Exported for testing — used by seedCsv for PostgreSQL column type inference */
+export function inferColumnType(values: string[]): string {
     let hasDecimal = false;
     let allNumeric = true;
     const INT32_MAX = 2147483647;

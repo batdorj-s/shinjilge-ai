@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { seedCsv, getPool } from "../db/data-lake.js";
+import { seedCsv, getPool, inferColumnType } from "../db/data-lake.js";
 import { findConceptColumn } from "../agents/columnSynonyms.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -132,5 +132,71 @@ describe("Meta Ads CSV — real PostgreSQL upload", () => {
         expect(names).toContain("Brand Awareness Q2");
         expect(names).toContain("Lead Gen June");
         expect(names).toContain("Retargeting June");
+    });
+
+    it("campaign_id stored as BIGINT (15-digit exceeds INTEGER range)", async () => {
+        const pool = getPool();
+        const result = await pool.query(
+            `SELECT data_type FROM information_schema.columns WHERE table_name = $1 AND column_name = 'campaign_id'`,
+            [TABLE_NAME],
+        );
+        expect(result.rows[0].data_type).toBe("bigint");
+    });
+});
+
+describe("inferColumnType — boundary tests", () => {
+    it("INT32_MAX (2147483647) → INTEGER", () => {
+        expect(inferColumnType(["2147483647", "0", "100"])).toBe("INTEGER");
+    });
+
+    it("INT32_MAX + 1 (2147483648) → BIGINT", () => {
+        expect(inferColumnType(["2147483648", "0"])).toBe("BIGINT");
+    });
+
+    it("15-digit ID (120330000111101) → BIGINT", () => {
+        expect(inferColumnType(["120330000111101"])).toBe("BIGINT");
+    });
+
+    it("INT64_MAX (9223372036854775807) → BIGINT", () => {
+        expect(inferColumnType(["9223372036854775807"])).toBe("BIGINT");
+    });
+
+    it("INT64_MAX + 1 (9223372036854775808) → NUMERIC (overflow)", () => {
+        expect(inferColumnType(["9223372036854775808"])).toBe("NUMERIC");
+    });
+
+    it('alphanumeric "Summer Sale 2025" → TEXT', () => {
+        expect(inferColumnType(["Summer Sale 2025"])).toBe("TEXT");
+    });
+
+    it('"Q1_2026" mixed → TEXT', () => {
+        expect(inferColumnType(["Q1_2026", "Q2_2026"])).toBe("TEXT");
+    });
+
+    it('"Region_5" mixed → TEXT', () => {
+        expect(inferColumnType(["Region_5"])).toBe("TEXT");
+    });
+
+    it("decimal value → NUMERIC", () => {
+        expect(inferColumnType(["523.45", "0.99"])).toBe("NUMERIC");
+    });
+
+    it("mixed decimal and integer → NUMERIC", () => {
+        expect(inferColumnType(["523.45", "100"])).toBe("NUMERIC");
+    });
+
+    it("empty values → TEXT", () => {
+        expect(inferColumnType(["", ""])).toBe("TEXT");
+    });
+
+    it("INT32_MIN (-2147483648) → BIGINT (abs value 2147483648 > INT32_MAX, conservative oversized)", () => {
+        // INT32_MIN fits in INTEGER, but abs(2147483648) > INT32_MAX,
+        // so magnitude-based detection conservatively chooses BIGINT.
+        // This is correct — BIGINT can hold INT32_MIN with no issue, just uses 8 bytes.
+        expect(inferColumnType(["-2147483648", "0"])).toBe("BIGINT");
+    });
+
+    it("negative below INT32_MIN → BIGINT", () => {
+        expect(inferColumnType(["-3000000000", "0"])).toBe("BIGINT");
     });
 });
