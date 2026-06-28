@@ -216,6 +216,25 @@ export async function initDataLake(): Promise<void> {
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_created_at ON sql_gen_log (created_at DESC)`);
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_sql_gen_log_outcome ON sql_gen_log (outcome)`);
 
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS meta_connections (
+                    id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram', 'page')),
+                    encrypted_token TEXT NOT NULL,
+                    token_expires_at TIMESTAMPTZ NOT NULL,
+                    scopes TEXT NOT NULL DEFAULT '[]',
+                    meta_user_id TEXT,
+                    page_id TEXT,
+                    instagram_id TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(owner_id, platform)
+                )
+            `);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_connections_owner ON meta_connections (owner_id)`);
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_connections_platform ON meta_connections (owner_id, platform)`);
+
             const existing = await pool.query("SELECT metric_name FROM kpi_targets");
             if (existing.rows.length === 0) {
                 await pool.query("INSERT INTO kpi_targets (metric_name, target_value, unit) VALUES ($1, $2, $3)", ["sales", 500000, "USD"]);

@@ -15,6 +15,10 @@ import { generateSchemaYml } from "./setup/generate-schema.js";
 import { runMultiAgent, runMultiAgentStream, clearConversationMemory } from "./multi-agent.js";
 import type { UserRole } from "./multi-agent.js";
 import { seedCsv, initDataLake, getCatalog, getPool, getColumnSamples, getColumnProfile, detectForeignKeys, authenticateUser, createUser } from "./db/data-lake.js";
+import { metaOAuthRouter } from "./auth/meta-oauth.js";
+import { syncAdsData, buildSilverLayer, buildGoldLayer, registerMetaTablesInCatalog } from "./ingestion/meta-ads.js";
+import { syncPageData } from "./ingestion/meta-page.js";
+import { syncInstagramData } from "./ingestion/meta-instagram.js";
 import { addDocumentToCatalog, removeDocumentsByPrefix } from "./rag.js";
 import { buildSemanticGroups, formatSemanticGroups } from "./utils.js";
 import { computeMetrics } from "./agents/reportMetrics.js";
@@ -972,6 +976,52 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
     const repo = await getRepository();
     await repo.updateKpiTarget(metric as any, Number(target));
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Meta OAuth routes
+// ─────────────────────────────────────────────────────────────
+app.use(metaOAuthRouter);
+
+// ─────────────────────────────────────────────────────────────
+// Meta Ads Sync
+// ─────────────────────────────────────────────────────────────
+app.post("/api/meta/sync", async (req, res) => {
+  const auth = verifyBearerHeader(req.headers.authorization);
+  if (!auth.success || !auth.payload) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const { sinceDays, platforms } = req.body;
+  const activePlatforms: string[] = platforms || ["ads", "page", "instagram"];
+  const results: Record<string, any> = {};
+
+  try {
+    if (activePlatforms.includes("ads")) {
+      const stats = await syncAdsData(auth.payload.userId, sinceDays || 90);
+      await buildSilverLayer(auth.payload.userId);
+      await buildGoldLayer(auth.payload.userId);
+      await registerMetaTablesInCatalog(auth.payload.userId);
+      results.ads = stats;
+    }
+
+    if (activePlatforms.includes("page")) {
+      const stats = await syncPageData(auth.payload.userId);
+      results.page = stats;
+    }
+
+    if (activePlatforms.includes("instagram")) {
+      const stats = await syncInstagramData(auth.payload.userId);
+      results.instagram = stats;
+    }
+
+    res.json({
+      success: true,
+      results,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
