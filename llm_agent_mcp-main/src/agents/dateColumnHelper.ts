@@ -3,6 +3,10 @@ export interface DateColumnInfo {
     detectedAs: "native" | "text-iso" | "text-us" | "text-eu" | "int-serial" | "int-year" | "name-heuristic";
 }
 
+// Accepted false-positive risk: _(?:start|stop)$ matches workflow_stop/process_start-style
+// columns that are unlikely to be date columns. In analytics/marketing contexts, columns
+// ending in "_start"/"_stop" are almost always date-related. If a non-date column with
+// this suffix appears in production data, add it to KNOWN_NON_DATE_COLUMNS below.
 const DATE_COLUMN_PATTERN = /\b(date|time|timestamp|month|year)\b|_(?:date|time|at|timestamp|month|year)$|invoice|^(?:date|time)_|_(?:start|stop)$/i;
 
 const KNOWN_NON_DATE_COLUMNS = [
