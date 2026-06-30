@@ -227,9 +227,13 @@ async function registerTableInCatalog(
 }
 
 export async function registerMetaTablesInCatalog(ownerId: string): Promise<void> {
-  await registerTableInCatalog(
-    BRONZE_TABLE_INSIGHTS,
-    ownerId,
-    "Meta Ads Bronze: Raw daily ad insights from Meta Graph API. One row per ad per day. Transforms (Silver/Gold) handled by dbt models: int_meta_ad_performance, meta_campaign_kpi, meta_adset_kpi.",
-  );
+  const tables: [string, string][] = [
+    [BRONZE_TABLE_CAMPAIGNS, "Meta Ads Bronze: Campaign level data. Each row is one ad campaign."],
+    [BRONZE_TABLE_ADSETS, "Meta Ads Bronze: Ad set level data. Each row is one ad set within a campaign."],
+    [BRONZE_TABLE_ADS, "Meta Ads Bronze: Ad level data. Each row is one creative ad within an ad set."],
+    [BRONZE_TABLE_INSIGHTS, "Meta Ads Bronze: Raw daily ad insights. One row per ad per day. Transforms in dbt: int_meta_ad_performance, meta_campaign_kpi, meta_adset_kpi."],
+  ];
+  for (const [table, desc] of tables) {
+    await registerTableInCatalog(table, ownerId, desc);
+  }
 }
