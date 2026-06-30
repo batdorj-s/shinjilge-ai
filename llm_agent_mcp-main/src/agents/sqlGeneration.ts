@@ -56,10 +56,7 @@ export async function buildActiveSchemaContext(
     );
     if (mentioned) return cachedSchema || await buildSchemaDefinition(mentioned);
 
-    const active = cachedActiveEntry || await getActiveCatalogEntry(userId);
-    if (active) return cachedSchema || await buildSchemaDefinition(active);
-
-    return cachedSchema || await buildSchemaDefinition(catalog as any);
+    return cachedSchema || await buildSchemaDefinition(catalog);
 }
 
 export async function getActiveColumns(entry: Promise<DataLakeCatalogEntry | null>): Promise<string[]> {
