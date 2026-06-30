@@ -1,5 +1,6 @@
 {{
   config(
+    enabled=false,
     materialized='incremental',
     unique_key='adset_id',
     on_schema_change='append_new_columns',

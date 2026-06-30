@@ -1,4 +1,4 @@
-{{ config(materialized='ephemeral') }}
+{{ config(materialized='ephemeral', enabled=false) }}
 
 with staged as (
     select * from {{ ref('stg_meta_ads') }}

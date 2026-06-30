@@ -1,6 +1,6 @@
 import { getPool, initDataLake, getColumnProfile } from "../db/data-lake.js";
 import { getConnection } from "../db/meta-repository.js";
-import { fetchAdAccountId, fetchCampaigns, fetchAdSets, fetchAds, fetchAdInsights, MetaApiError } from "./meta-api.js";
+import { fetchAdAccountId, fetchCampaigns, fetchAdSets, fetchAds, MetaApiError } from "./meta-api.js";
 
 const BRONZE_TABLE_CAMPAIGNS = "meta_bronze_campaigns";
 const BRONZE_TABLE_ADSETS = "meta_bronze_adsets";
@@ -137,52 +137,8 @@ export async function syncAdsData(
     console.log(`[Meta Ads] Stored ${ads.length} ads`);
   }
 
-  // 4. Fetch and store insights
-  const insights = await fetchAdInsights(adAccountId, accessToken, since);
-  if (insights.length > 0) {
-    await pool.query(`DROP TABLE IF EXISTS "${BRONZE_TABLE_INSIGHTS}" CASCADE`);
-    await pool.query(`
-      CREATE TABLE "${BRONZE_TABLE_INSIGHTS}" (
-        id SERIAL PRIMARY KEY,
-        campaign_id TEXT,
-        campaign_name TEXT,
-        adset_id TEXT,
-        adset_name TEXT,
-        ad_id TEXT,
-        ad_name TEXT,
-        date_start DATE,
-        date_stop DATE,
-        impressions BIGINT,
-        clicks BIGINT,
-        spend NUMERIC,
-        ctr NUMERIC,
-        cpc NUMERIC,
-        cpm NUMERIC,
-        reach BIGINT,
-        frequency NUMERIC,
-        actions JSONB,
-        cost_per_action_type JSONB,
-        action_values JSONB,
-        purchase_roas JSONB,
-        fetched_at TIMESTAMPTZ DEFAULT NOW(),
-        owner_id TEXT
-      )
-    `);
-    for (const ins of insights) {
-      await pool.query(
-        `INSERT INTO "${BRONZE_TABLE_INSIGHTS}" (campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, date_start, date_stop, impressions, clicks, spend, ctr, cpc, cpm, reach, frequency, actions, cost_per_action_type, action_values, purchase_roas, owner_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8::date, $9::bigint, $10::bigint, $11::numeric, $12::numeric, $13::numeric, $14::numeric, $15::bigint, $16::numeric, $17::jsonb, $18::jsonb, $19::jsonb, $20::jsonb, $21)`,
-        [ins.campaign_id, ins.campaign_name, ins.adset_id, ins.adset_name, ins.ad_id, ins.ad_name, ins.date_start, ins.date_stop,
-         ins.impressions || "0", ins.clicks || "0", ins.spend || "0", ins.ctr || "0", ins.cpc || "0", ins.cpm || "0",
-         ins.reach || "0", ins.frequency || "0",
-         JSON.stringify(ins.actions || []), JSON.stringify(ins.cost_per_action_type || []),
-         JSON.stringify(ins.action_values || []), JSON.stringify(ins.purchase_roas || []),
-         ownerId],
-      );
-    }
-    stats.insights = insights.length;
-    console.log(`[Meta Ads] Stored ${insights.length} insights`);
-  }
+  // 4. Insights — DISABLED: meta_bronze_insights deprecated by Meta 2026-06-15
+  stats.insights = 0;
 
   return stats;
 }
@@ -231,7 +187,7 @@ export async function registerMetaTablesInCatalog(ownerId: string): Promise<void
     [BRONZE_TABLE_CAMPAIGNS, "Meta Ads Bronze: Campaign level data. Each row is one ad campaign."],
     [BRONZE_TABLE_ADSETS, "Meta Ads Bronze: Ad set level data. Each row is one ad set within a campaign."],
     [BRONZE_TABLE_ADS, "Meta Ads Bronze: Ad level data. Each row is one creative ad within an ad set."],
-    [BRONZE_TABLE_INSIGHTS, "Meta Ads Bronze: Raw daily ad insights. One row per ad per day. Transforms in dbt: int_meta_ad_performance, meta_campaign_kpi, meta_adset_kpi."],
+    // BRONZE_TABLE_INSIGHTS: removed — insights data deprecated by Meta 2026-06-15, table no longer maintained
   ];
   for (const [table, desc] of tables) {
     await registerTableInCatalog(table, ownerId, desc);
