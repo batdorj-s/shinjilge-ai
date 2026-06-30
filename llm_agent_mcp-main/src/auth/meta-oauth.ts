@@ -21,6 +21,9 @@ function consumeNonce(nonce: string): { userId: string; role: string } | null {
   return { userId: entry.userId, role: entry.role };
 }
 
+// Export for dev-only bypass route in api-server.ts
+export { generateNonce };
+
 // Periodic cleanup of expired nonces (every 5 minutes)
 setInterval(() => {
   const now = Date.now();
@@ -44,6 +47,19 @@ const REQUIRED_SCOPES = [
   "pages_show_list",
   "business_management",
 ].join(",");
+
+// DEV ONLY: OAuth redirect without JWT — for localhost testing
+router.get("/api/dev/meta-auth", (_req: Request, res: Response) => {
+  const nonce = generateNonce("user_1782829985723", "admin");
+  const state = Buffer.from(JSON.stringify({ nonce })).toString("base64url");
+  const authUrl = new URL("https://www.facebook.com/v22.0/dialog/oauth");
+  authUrl.searchParams.set("client_id", META_APP_ID);
+  authUrl.searchParams.set("redirect_uri", META_REDIRECT_URI);
+  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("scope", REQUIRED_SCOPES);
+  authUrl.searchParams.set("response_type", "code");
+  res.redirect(authUrl.toString());
+});
 
 // GET /api/meta/auth — redirect user to Meta OAuth dialog
 router.get("/api/meta/auth", (req: Request, res: Response) => {
