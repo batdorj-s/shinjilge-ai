@@ -401,7 +401,12 @@ app.get("/api/admin/files/:id/preview", async (req, res) => {
 
     if (file.type === "dataset") {
       const tableName = file.id || file.filename;
-      const previewResult = await getPool().query(`SELECT * FROM "${tableName}" LIMIT 20`);
+      let previewResult;
+      try {
+        previewResult = await getPool().query(`SELECT * FROM "${tableName}" LIMIT 20`);
+      } catch {
+        return res.status(410).json({ error: `Өгөгдлийн сангийн "${tableName}" хүснэгт устгагдсан байна. Файлыг дахин байршуулна уу.` });
+      }
       let columns: string[] = [];
       try {
         const catalogResult = await getPool().query(
