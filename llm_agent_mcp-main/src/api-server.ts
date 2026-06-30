@@ -1055,6 +1055,13 @@ async function start() {
   const { requireEncryptionKey } = await import("./utils/encryption.js");
   requireEncryptionKey();
 
+  // Start background token refresh (every 6 hours)
+  const { refreshExpiringTokens } = await import("./jobs/refresh-meta-tokens.js");
+  refreshExpiringTokens().catch(() => {}); // immediate run on startup
+  setInterval(() => {
+    refreshExpiringTokens().catch(() => {});
+  }, 6 * 60 * 60 * 1000);
+
   app.listen(PORT, () => {
     console.log(`\nAPI Server running at http://localhost:${PORT}`);
   });
