@@ -234,6 +234,9 @@ export async function initDataLake(): Promise<void> {
             `);
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_connections_owner ON meta_connections (owner_id)`);
             await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_connections_platform ON meta_connections (owner_id, platform)`);
+            // Token error tracking (added after initial migration; safe to re-run)
+            await pool.query(`ALTER TABLE meta_connections ADD COLUMN IF NOT EXISTS last_error TEXT`).catch(() => {});
+            await pool.query(`ALTER TABLE meta_connections ADD COLUMN IF NOT EXISTS last_error_at TIMESTAMPTZ`).catch(() => {});
 
             const existing = await pool.query("SELECT metric_name FROM kpi_targets");
             if (existing.rows.length === 0) {

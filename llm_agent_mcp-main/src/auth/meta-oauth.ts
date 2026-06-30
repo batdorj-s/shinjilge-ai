@@ -187,6 +187,8 @@ router.get("/api/meta/status", async (req: Request, res: Response) => {
     metaUserId: c.meta_user_id,
     pageId: c.page_id,
     instagramId: c.instagram_id,
+    lastError: c.last_error || null,
+    lastErrorAt: c.last_error_at || null,
   }));
 
   res.json({

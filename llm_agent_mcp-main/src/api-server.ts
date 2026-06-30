@@ -1055,12 +1055,9 @@ async function start() {
   const { requireEncryptionKey } = await import("./utils/encryption.js");
   requireEncryptionKey();
 
-  // Start background token refresh (every 6 hours)
-  const { refreshExpiringTokens } = await import("./jobs/refresh-meta-tokens.js");
-  refreshExpiringTokens().catch(() => {}); // immediate run on startup
-  setInterval(() => {
-    refreshExpiringTokens().catch(() => {});
-  }, 6 * 60 * 60 * 1000);
+  // Token refresh is NOT run in-process here — it runs as a dedicated cron job:
+  //   npm run refresh-tokens
+  // See src/jobs/refresh-meta-tokens.ts for lifecycle documentation.
 
   app.listen(PORT, () => {
     console.log(`\nAPI Server running at http://localhost:${PORT}`);

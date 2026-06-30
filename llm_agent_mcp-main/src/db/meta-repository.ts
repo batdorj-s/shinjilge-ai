@@ -11,6 +11,8 @@ export interface MetaConnection {
   meta_user_id?: string;
   page_id?: string;
   instagram_id?: string;
+  last_error?: string | null;
+  last_error_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -25,6 +27,8 @@ export interface MetaConnectionRow {
   meta_user_id: string | null;
   page_id: string | null;
   instagram_id: string | null;
+  last_error: string | null;
+  last_error_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -44,6 +48,8 @@ async function rowToConnection(row: MetaConnectionRow): Promise<MetaConnection> 
     meta_user_id: row.meta_user_id ?? undefined,
     page_id: row.page_id ?? undefined,
     instagram_id: row.instagram_id ?? undefined,
+    last_error: row.last_error,
+    last_error_at: row.last_error_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

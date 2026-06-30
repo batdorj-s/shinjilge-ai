@@ -1,5 +1,9 @@
 import { RateLimiter } from "../rate-limiter.js";
 
+// API version pinned to v22.0. Meta deprecates metrics and endpoints without
+// warning — always pin to a specific version, never use "latest". When upgrading
+// to v23.0+, check the changelog at https://developers.facebook.com/docs/graph-api/changelog
+// for breaking changes affecting insights metrics and permission scopes.
 const GRAPH_API_BASE = "https://graph.facebook.com/v22.0";
 
 export interface MetaApiConfig {
@@ -96,7 +100,16 @@ export async function fetchAdAccountId(accessToken: string): Promise<string> {
   if (!accounts || accounts.length === 0) {
     throw new MetaApiError("No ad accounts found for this user");
   }
-  // Strip act_ prefix if present — downstream code prepends it
+  // ROOT CAUSE: Meta returns the ad account ID WITH the "act_" prefix
+  // (e.g. "act_770599790354922"), but downstream fetchCampaigns/fetchAdSets
+  // etc. prepend "act_" again: `act_${adAccountId}/campaigns`.
+  // If we returned the raw ID as-is, we'd get act_act_770599790354922 — a 404.
+  //
+  // This is unique to ad accounts. Page IDs (e.g. "1428078340802557") and
+  // Instagram IDs (e.g. "17841405822304") are always bare numeric strings
+  // returned without any prefix, so they do NOT need stripping — verified by
+  // inspecting fetchPagePosts(`${pageId}/posts`) and
+  // fetchInstagramMedia(`${instagramId}/media`).
   const rawId = accounts[0].id;
   return rawId.replace(/^act_/, "");
 }
