@@ -984,6 +984,15 @@ app.post("/api/kpi/:metric/target", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // Meta OAuth routes
 // ─────────────────────────────────────────────────────────────
+// Privacy Policy page (required for Meta App Review)
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+app.get("/privacy", (_req: any, res: any) => {
+  const html = readFileSync(join(__dirname, "..", "public", "privacy-policy.html"), "utf-8");
+  res.type("html").send(html);
+});
 app.use(metaOAuthRouter);
 
 // ─────────────────────────────────────────────────────────────
