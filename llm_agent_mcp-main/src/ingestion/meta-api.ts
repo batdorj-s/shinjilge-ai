@@ -86,16 +86,19 @@ export async function graphRequest<T = any>(
 }
 
 export async function fetchAdAccountId(accessToken: string): Promise<string> {
-  const me = await graphRequest<{ adaccounts?: { data: Array<{ id: string }> } }>(
+  // NOTE: me/adaccounts returns { data: [{ id: "act_..." }] } directly, NOT nested under adaccounts key
+  const result = await graphRequest<{ data: Array<{ id: string }> }>(
     "me/adaccounts",
     { fields: "id" },
     accessToken,
   );
-  const accounts = me.adaccounts?.data;
+  const accounts = result.data;
   if (!accounts || accounts.length === 0) {
     throw new MetaApiError("No ad accounts found for this user");
   }
-  return accounts[0].id;
+  // Strip act_ prefix if present — downstream code prepends it
+  const rawId = accounts[0].id;
+  return rawId.replace(/^act_/, "");
 }
 
 export interface CampaignNode {
@@ -254,8 +257,11 @@ export async function fetchPagePosts(
   since?: string,
   until?: string,
 ): Promise<any[]> {
+  // NOTE: Post-level insights metrics (post_impressions, post_engaged_users, etc.)
+  // were deprecated on 2026-06-15. We now fetch posts without inline insights and
+  // enrich them via per-post /insights calls with the v22.0 metric names below.
   const params: Record<string, string> = {
-    fields: "id,message,created_time,permalink_url,insights.metric(post_impressions,post_engaged_users,post_reactions_by_type_total,post_comments,post_shares){values,period}",
+    fields: "id,message,created_time,permalink_url",
     limit: "100",
   };
   if (since) params.since = since;
@@ -266,7 +272,15 @@ export async function fetchPagePosts(
     params,
     accessToken,
   );
-  return result.data || [];
+  const posts = result.data || [];
+
+  // NOTE: Post-level insights require a Page Access Token with read_insights
+  // permission. Many Page Tokens (especially from Graph API Explorer) no longer
+  // have access — insights enrichment is skipped to avoid wasted API calls.
+  // If read_insights is available and you need post metrics, use:
+  //   GET /{post-id}/insights?metric=post_reactions_like_total,post_clicks&period=lifetime
+
+  return posts;
 }
 
 export async function fetchInstagramMedia(

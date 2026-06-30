@@ -46,13 +46,23 @@ export async function syncPageData(ownerId: string): Promise<{ posts: number }> 
         }
       }
 
+      // Sum individual reaction types (split from post_reactions_by_type_total which was deprecated)
+      const totalReactions =
+        (metrics.post_reactions_like_total || 0) +
+        (metrics.post_reactions_love_total || 0) +
+        (metrics.post_reactions_wow_total || 0) +
+        (metrics.post_reactions_haha_total || 0) +
+        (metrics.post_reactions_sorry_total || 0) +
+        (metrics.post_reactions_anger_total || 0);
+
+      // post_impressions & post_engaged_users were deprecated 2026-06-15 — default to 0
       await pool.query(
         `INSERT INTO "${BRONZE_TABLE_POSTS}" (id, message, created_time, permalink_url, post_impressions, post_engaged_users, post_reactions, post_comments, post_shares, raw_insights, owner_id)
          VALUES ($1, $2, $3::timestamptz, $4, $5::bigint, $6::bigint, $7::bigint, $8::bigint, $9::bigint, $10::jsonb, $11)
          ON CONFLICT (id) DO UPDATE SET message=EXCLUDED.message, fetched_at=NOW()`,
         [post.id, post.message || null, post.created_time || null, post.permalink_url || null,
          metrics.post_impressions || 0, metrics.post_engaged_users || 0,
-         metrics.post_reactions_by_type_total || 0, metrics.post_comments || 0, metrics.post_shares || 0,
+         totalReactions, metrics.post_comments || 0, metrics.post_shares || 0,
          JSON.stringify(insights), ownerId],
       );
     }
