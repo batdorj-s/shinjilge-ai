@@ -300,17 +300,40 @@ export async function fetchInstagramMedia(
   instagramId: string,
   accessToken: string,
 ): Promise<any[]> {
+  // Basic fields always work with instagram_basic scope
+  const fields = "id,caption,media_type,media_url,permalink,like_count,comments_count";
+  // Insights require instagram_manage_insights scope (not always available)
+  const insightsFields = "insights.metric(impressions,reach,likes,comments,saved){values,period}";
+
   const params: Record<string, string> = {
-    fields: "id,caption,media_type,media_url,permalink,like_count,comments_count,insights.metric(impressions,reach,likes,comments,saved){values,period}",
+    fields: `${fields},${insightsFields}`,
     limit: "100",
   };
 
-  const result = await graphRequest<{ data: any[] }>(
-    `${instagramId}/media`,
-    params,
-    accessToken,
-  );
-  return result.data || [];
+  try {
+    const result = await graphRequest<{ data: any[] }>(
+      `${instagramId}/media`,
+      params,
+      accessToken,
+    );
+    return result.data || [];
+  } catch (err: any) {
+    // If insights fail (code 10 = no permission), retry without insights
+    if (err.fbErrorCode === 10) {
+      console.log("[Meta API] Instagram insights not available (missing instagram_manage_insights scope), falling back to basic fields");
+      const fallbackParams: Record<string, string> = {
+        fields,
+        limit: "100",
+      };
+      const result = await graphRequest<{ data: any[] }>(
+        `${instagramId}/media`,
+        fallbackParams,
+        accessToken,
+      );
+      return result.data || [];
+    }
+    throw err;
+  }
 }
 
 function sleep(ms: number): Promise<void> {

@@ -42,9 +42,9 @@ const REQUIRED_SCOPES = [
   "ads_read",
   "ads_management",
   "pages_read_engagement",
-  "instagram_basic",
-  "instagram_content_publish",
   "pages_show_list",
+  "instagram_basic",
+  "instagram_manage_insights",
   "business_management",
 ].join(",");
 
